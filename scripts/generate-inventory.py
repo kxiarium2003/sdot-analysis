@@ -1,14 +1,12 @@
 """
-SDOT File Inventory Generator (generate-inventory.py) - V3
+SDOT File Inventory Generator (generate-inventory.py) - V4
 
 주요 개선 사항
-1. I/O 최적화: 메타데이터 및 날짜(Date) 컬럼만 부분 로드하여 메모리 사용량 최소화
-2. 도메인 로직: S-DoT 연도별 스키마 버전 명시적 분류 (측정시간 > 등록일자 > 전송시간 최우선 탐색)
-3. 주기 판별: 데이터의 총 기간 기반으로 daily/monthly/yearly 판별
-4. 날짜 파싱 강화: 마침표(.), 언더바(_), 하이픈(-) 등 다중 포맷 완벽 호환 및 결측치 방어
-5. 데이터 무결성: index_col=False 옵션으로 CSV 콤마 오작동(데이터 밀림 현상) 방어
-6. 메타데이터 보존: 파일 내 존재하는 모든 원본 컬럼(all_columns_list) 박제
-7. 경로 강건성: 스크립트 실행 위치와 무관하게 프로젝트 절대 경로 자동 추적
+1. Fallback 방어망 추가: 데이터 내부 시간 컬럼 훼손 시 파일명에서 정규식으로 날짜 추출 및 복구
+2. I/O 최적화: 메타데이터 및 날짜(Date) 컬럼만 부분 로드하여 메모리 사용량 최소화
+3. 도메인 로직: S-DoT 연도별 스키마 버전 명시적 분류
+4. 날짜 파싱 강화: 마침표, 언더바, 하이픈 다중 포맷 호환 및 엑셀 지수 변환 에러 방어
+5. 데이터 무결성: index_col=False 옵션으로 데이터 밀림(Shift) 현상 원천 차단
 """
 
 import argparse
@@ -27,7 +25,7 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 # 지원하는 인코딩 목록
 SUPPORTED_ENCODINGS = ['utf-8', 'cp949', 'euc-kr', 'utf-8-sig']
 
-# 프로젝트 최상위 디렉토리 절대 경로 동적 계산 (scripts 폴더의 부모 폴더)
+# 프로젝트 최상위 디렉토리 절대 경로 동적 계산
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 def parse_args() -> argparse.Namespace:
@@ -59,15 +57,28 @@ def setup_logging() -> logging.Logger:
     return logger
 
 def extract_year(filename: str) -> Optional[int]:
-    """파일명에서 202x 형태의 연도를 추출합니다."""
-    match = re.search(r'(202\d{1})', filename)
+    """파일명에서 20xx 형태의 연도를 추출합니다."""
+    match = re.search(r'(20\d{2})', filename)
     return int(match.group(1)) if match else None
 
+def extract_dates_from_filename(filename: str) -> Tuple[Optional[str], Optional[str]]:
+    """[Fallback] 파일명에서 2021.01.25-01.31 형태를 추출하여 시작/종료일로 변환합니다."""
+    pattern = r'(\d{4})\.(\d{2})\.(\d{2})-(\d{2})\.(\d{2})'
+    match = re.search(pattern, filename)
+    
+    if match:
+        year, start_month, start_day, end_month, end_day = match.groups()
+        start_date = f"{year}-{start_month}-{start_day} 00:00:00"
+        
+        end_year = year
+        if int(start_month) == 12 and int(end_month) == 1:
+            end_year = str(int(year) + 1)
+            
+        end_date = f"{end_year}-{end_month}-{end_day} 23:59:59"
+        return start_date, end_date
+    return None, None
+
 def inspect_csv_header(file_path: Path, logger: logging.Logger) -> Tuple[str, List[str]]:
-    """
-    pandas 파서를 이용하여 안전하게 인코딩과 컬럼 목록을 추출합니다.
-    [핵심 보완] index_col=False를 추가하여 데이터 밀림(Shift) 현상을 원천 차단합니다.
-    """
     for enc in SUPPORTED_ENCODINGS:
         try:
             df_head = pd.read_csv(file_path, encoding=enc, nrows=100, dtype=str, index_col=False)
@@ -79,10 +90,6 @@ def inspect_csv_header(file_path: Path, logger: logging.Logger) -> Tuple[str, Li
     raise ValueError(f"Failed to read CSV header: {file_path}")
 
 def classify_schema(columns: List[str]) -> Tuple[str, Optional[str], str]:
-    """
-    [핵심 보완] 컬럼 목록을 바탕으로 시간 기준 컬럼을 최우선순위로 탐색합니다.
-    우선순위: 1. 측정시간 -> 2. 등록일자 -> 3. 전송시간
-    """
     col_str = ",".join(columns)
     column_hash = hashlib.md5(col_str.encode('utf-8')).hexdigest()[:8]
     
@@ -102,7 +109,6 @@ def classify_schema(columns: List[str]) -> Tuple[str, Optional[str], str]:
     return schema_version, date_col, column_hash
 
 def calculate_period_type(start_date: pd.Timestamp, end_date: pd.Timestamp) -> str:
-    """총 기간(Date Diff)을 바탕으로 데이터의 기간 단위를 판별합니다."""
     if pd.isna(start_date) or pd.isna(end_date):
         return 'unknown'
         
@@ -118,9 +124,7 @@ def calculate_period_type(start_date: pd.Timestamp, end_date: pd.Timestamp) -> s
         return 'daily'
 
 def process_file(file_path: Path, raw_dir: Path, logger: logging.Logger) -> Optional[Dict[str, Any]]:
-    """단일 파일에 대한 메타데이터 추출 작업을 수행합니다."""
     try:
-        # 1. 헤더만 읽어서 인코딩, 컬럼 리스트(모든 컬럼), 스키마 분석
         encoding, columns = inspect_csv_header(file_path, logger)
         schema_version, date_col, column_hash = classify_schema(columns)
         
@@ -130,24 +134,17 @@ def process_file(file_path: Path, raw_dir: Path, logger: logging.Logger) -> Opti
         period_type = 'unknown'
         remarks = '성공'
         
-        # 2. 선택된 시간 컬럼만 로드하여 메모리 최적화 (데이터 밀림 방지를 위해 index_col=False 필수)
         if date_col:
             df_dates = pd.read_csv(file_path, encoding=encoding, usecols=[date_col], dtype=str, index_col=False)
             row_count = len(df_dates)
             
             if row_count > 0:
-                # [핵심 보완] 유니버설 날짜 파싱 로직 적용
                 raw_dates = df_dates[date_col].dropna().astype(str).str.strip()
-                
-                # '2025-03-18_00:07:00' 형태 처리 (언더바 제거)
                 raw_dates = raw_dates.str.replace('_', ' ', regex=False)
-                # 엑셀 지수 변환 찌꺼기 처리 ('202000000000.0' -> '202000000000')
                 raw_dates = raw_dates.str.replace(r'\.0$', '', regex=True)
                 
-                # 1차 파싱: 하이픈(-), 마침표(.), 콜론(:)이 포함된 정상/혼합 포맷 처리
                 parsed_dates = pd.to_datetime(raw_dates, errors='coerce')
                 
-                # 2차/3차 파싱: 순수 숫자로만 이루어진 S-DoT 포맷 구제 (12자리/14자리)
                 if parsed_dates.isna().mean() > 0.5:
                     parsed_dates = pd.to_datetime(raw_dates, format='%Y%m%d%H%M', errors='coerce')
                 if parsed_dates.isna().mean() > 0.5:
@@ -162,11 +159,19 @@ def process_file(file_path: Path, raw_dir: Path, logger: logging.Logger) -> Opti
                     end_date_str = e_date.strftime('%Y-%m-%d %H:%M:%S')
                     period_type = calculate_period_type(s_date, e_date)
                 else:
-                    remarks = f"날짜 데이터 파싱 불가 ({date_col} 포맷 훼손)"
+                    # [V2.2 핵심 추가] 내부 데이터 훼손 시 파일명에서 날짜 추출 시도
+                    start_date_str, end_date_str = extract_dates_from_filename(file_path.name)
+                    
+                    if start_date_str and end_date_str:
+                        s_date = pd.to_datetime(start_date_str)
+                        e_date = pd.to_datetime(end_date_str)
+                        period_type = calculate_period_type(s_date, e_date)
+                        remarks = f"성공 (데이터 훼손으로 파일명에서 {date_col} 복구)"
+                    else:
+                        remarks = f"날짜 파싱 불가 ({date_col} 훼손 및 파일명 추출 실패)"
         else:
-            # Date 컬럼이 없는 알 수 없는 스키마의 경우 줄 수만 계산
             with open(file_path, 'r', encoding=encoding) as f:
-                row_count = sum(1 for _ in f) - 1 # 헤더 제외
+                row_count = sum(1 for _ in f) - 1 
             remarks = "시간 관련 컬럼 존재하지 않음"
             
         return {
@@ -177,10 +182,10 @@ def process_file(file_path: Path, raw_dir: Path, logger: logging.Logger) -> Opti
             'encoding': encoding,
             'row_count': row_count,
             'col_count': len(columns),
-            'all_columns_list': ", ".join(columns),  # [추가] 파일 내 모든 컬럼 보존
+            'all_columns_list': ", ".join(columns),
             'column_hash': column_hash,
             'schema_version': schema_version,
-            'target_time_col': date_col,             # [추가] 실제 파싱에 사용된 타겟 컬럼명
+            'target_time_col': date_col,
             'period_type': period_type,
             'start_date': start_date_str,
             'end_date': end_date_str,
@@ -192,7 +197,6 @@ def process_file(file_path: Path, raw_dir: Path, logger: logging.Logger) -> Opti
         return None
 
 def build_inventory(raw_dir: Path, logger: logging.Logger) -> pd.DataFrame:
-    """전체 디렉토리를 순회하며 인벤토리 데이터프레임을 구축합니다."""
     records = []
     csv_files = list(raw_dir.rglob('*.csv'))
     
@@ -201,7 +205,8 @@ def build_inventory(raw_dir: Path, logger: logging.Logger) -> pd.DataFrame:
         return pd.DataFrame()
         
     for idx, file_path in enumerate(csv_files, 1):
-        logger.info(f"Processing ({idx}/{len(csv_files)}): {file_path.name}")
+        if idx % 50 == 0 or idx == len(csv_files):
+            logger.info(f"Processing ({idx}/{len(csv_files)}): {file_path.name}")
         record = process_file(file_path, raw_dir, logger)
         if record:
             records.append(record)
@@ -212,7 +217,6 @@ def build_inventory(raw_dir: Path, logger: logging.Logger) -> pd.DataFrame:
         df = df.sort_values(by=['year', 'file_name']).reset_index(drop=True)
         df['file_order'] = df.groupby('year').cumcount() + 1
         
-        # [수정] 메타데이터 보존을 위해 새로 추가한 컬럼들을 순서에 맞게 배치
         cols_order = [
             'year', 'file_order', 'relative_path', 'file_name', 'file_size_mb',
             'encoding', 'row_count', 'col_count', 'all_columns_list', 'column_hash', 
@@ -223,7 +227,6 @@ def build_inventory(raw_dir: Path, logger: logging.Logger) -> pd.DataFrame:
     return df
 
 def update_excel(df_inventory: pd.DataFrame, output_path: Path, logger: logging.Logger) -> None:
-    """기존 엑셀 파일의 다른 시트는 보존하고 'FileInventory' 시트만 덮어씁니다."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     sheet_name = 'FileInventory'
     
@@ -256,7 +259,7 @@ def print_summary(df_inventory: pd.DataFrame, logger: logging.Logger) -> None:
     total_files = len(df_inventory)
     total_rows = df_inventory['row_count'].sum()
     schema_counts = df_inventory['schema_version'].value_counts().to_dict()
-    failed_counts = len(df_inventory[df_inventory['remarks'] != '성공'])
+    failed_counts = len(df_inventory[~df_inventory['remarks'].str.contains('성공', na=False)])
     
     print("\n" + "="*50)
     print(" SDOT File Inventory Generation Summary")
