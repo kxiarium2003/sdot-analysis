@@ -1,3 +1,7 @@
+"""
+merge-all-years-v2.py - 연도별 데이터 최종 병합 스크립트 V2
+(메모리 최적화 Chunk 병합 + 타입 충돌/지수표기법/헤더 누락 이중 방어 + 인코딩 최적화)
+"""
 import pandas as pd
 from pathlib import Path
 import time
@@ -28,7 +32,8 @@ reference_columns = None
 reference_file = None
 
 for file in interim_files:
-    cols = pd.read_csv(file, nrows=0).columns.tolist()
+    # 한글 깨짐 방지를 위해 encoding='utf-8' 명시
+    cols = pd.read_csv(file, nrows=0, encoding='utf-8').columns.tolist()
     
     if reference_columns is None:
         reference_columns = cols
@@ -45,7 +50,7 @@ print(f"✅ 모든 파일이 동일한 스키마({len(reference_columns)}개 컬
 # ==========================================
 # [STEP 2] 데이터 병합 + 실시간 클렌징 (Chunk & Append)
 # ==========================================
-print("🏗️ [STEP 2] 마스터 파일 생성 (메모리 최적화 + 지수표기법/헤더 누락 방지)")
+print("🏗️ [STEP 2] 마스터 파일 생성 (메모리 최적화 + 지수표기법/헤더 누락 이중 방어)")
 if output_file.exists():
     output_file.unlink() # 기존에 오염된 마스터 파일 삭제
 
@@ -57,20 +62,19 @@ for file in interim_files:
     print(f"🔄 병합 및 정제 중: {file.name} ... ", end="", flush=True)
     
     try:
-        # 핵심 변경 1: dtype=str을 주어 숫자로 자동 변환되어 깨지는 현상(2.02E+11 등) 원천 차단
-        chunk_iter = pd.read_csv(file, chunksize=100000, low_memory=False, dtype=str)
+        # dtype=str 원천 차단 및 encoding='utf-8' 적용
+        chunk_iter = pd.read_csv(file, chunksize=100000, low_memory=False, dtype=str, encoding='utf-8')
         file_rows = 0
         
         for chunk in chunk_iter:
-            # 핵심 변경 2: 불량 데이터 실시간 필터링 (지수표기법 포함된 행, 날짜 자리에 컬럼명이 들어간 행 제거)
-            # measure_time 컬럼이 존재한다고 가정하고 정제
+            # 불량 데이터 실시간 필터링 (이중 방어막)
             if 'measure_time' in chunk.columns:
-                # 'E+'가 포함된 지수표기법 데이터 제거 및 한글 헤더 찌꺼기 제거
                 chunk = chunk[~chunk['measure_time'].str.contains('E\+', na=False)]
                 chunk = chunk[~chunk['measure_time'].str.contains('전송시간|측정일시', na=False)]
             
             if len(chunk) > 0:
-                chunk.to_csv(output_file, mode='a', index=False, header=first_file)
+                # 출력 시에도 utf-8 적용
+                chunk.to_csv(output_file, mode='a', index=False, header=first_file, encoding='utf-8')
                 first_file = False
                 file_rows += len(chunk)
             
@@ -87,7 +91,7 @@ for file in interim_files:
 print("\n🔍 [STEP 3] 사후 검증: 생성된 마스터 데이터 무결성 체크")
 
 try:
-    master_cols = pd.read_csv(output_file, nrows=0).columns.tolist()
+    master_cols = pd.read_csv(output_file, nrows=0, encoding='utf-8').columns.tolist()
     if master_cols != reference_columns:
         print("❌ [FAIL] 최종 마스터 파일의 컬럼이 꼬였습니다!")
         sys.exit(1)
