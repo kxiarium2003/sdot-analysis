@@ -12,3 +12,6 @@ data/
 # Python
 __pycache__/
 *.pyc
+
+# Temporary files
+eda/.tmp/
