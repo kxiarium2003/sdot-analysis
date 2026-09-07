@@ -59,7 +59,7 @@ for version in schema_versions:
     rename_dicts[version] = col_map
 
 flag_columns = [f"flag_{col}" for col in master_columns]
-final_columns = master_columns + flag_columns + ['measure_time_source', 'measure_time_tx_reg_mismatch']
+final_columns = master_columns + flag_columns + ['measure_time_source', 'measure_time_tx_reg_mismatch', 'measure_time_year_outlier']
 
 # 0행짜리 파일(전부 필터링된 경우)의 문자열 컬럼이 pyarrow에서 null 타입으로 추론돼
 # ParquetWriter 스키마와 어긋나는 걸 막기 위해 스키마를 명시적으로 고정한다.
@@ -73,6 +73,7 @@ for _col in flag_columns:
     _pa_fields.append(pa.field(_col, pa.int64()))
 _pa_fields.append(pa.field('measure_time_source', pa.string()))
 _pa_fields.append(pa.field('measure_time_tx_reg_mismatch', pa.bool_()))
+_pa_fields.append(pa.field('measure_time_year_outlier', pa.bool_()))
 EXPECTED_SCHEMA = pa.schema(_pa_fields)
 
 
@@ -189,6 +190,7 @@ def resolve_measure_time(df: pd.DataFrame) -> tuple[pd.Series, pd.Series, pd.Ser
 
 accepted, rejected = [], []
 drop_reason_counter = Counter()
+year_outlier_counter = 0
 resumed_file_count = 0
 resumed_row_count = 0
 years = sorted(df_inv[df_inv['schema_version'].isin(TARGET_SCHEMAS)]['year'].dropna().unique())
@@ -265,7 +267,19 @@ for year in years:
 
         df = df[valid_mask]
 
-        string_cols = ['measure_time', 'sensor_id', 'measure_time_source', 'measure_time_tx_reg_mismatch']
+        # 시각 타당성 체크 (Phase 0 5번 "물리 범위 검증"을 measure_time에도 적용):
+        # 이 파일이 대표하는 연도에서 1년 넘게 벗어나면 원본 자체의 시계 이상으로 보고 플래그만 남긴다
+        # (조용히 버리지 않음 - "0 치환 금지"와 같은 정신. 실측: 8.2M행 중 1건, 센서 시계 오류로 추정)
+        mt_year = df['measure_time'].str.slice(0, 4).astype(float)
+        file_year = row['year']
+        year_outlier_mask = (mt_year < file_year - 1) | (mt_year > file_year + 1)
+        df['measure_time_year_outlier'] = year_outlier_mask
+        if year_outlier_mask.any():
+            year_outlier_counter += int(year_outlier_mask.sum())
+            sample = df.loc[year_outlier_mask, ['sensor_id', 'measure_time']].head(5).values.tolist()
+            print(f"  ⚠️  연도 이상치 {int(year_outlier_mask.sum())}건 ({file_name}): {sample}", flush=True)
+
+        string_cols = ['measure_time', 'sensor_id', 'measure_time_source', 'measure_time_tx_reg_mismatch', 'measure_time_year_outlier']
         for col in df.columns:
             if col not in string_cols:
                 # 파일마다 결측 유무에 따라 pd.to_numeric이 int64/float64를 오락가락하면
@@ -329,6 +343,9 @@ if drop_reason_counter:
     print(f"\n폐기 사유별 집계:")
     for reason, cnt in drop_reason_counter.most_common():
         print(f"  - {reason}: {cnt:,}건")
+
+print(f"\n연도 이상치(measure_time_year_outlier) - 이번 실행에서 새로 처리한 파일 기준: {year_outlier_counter}건")
+print("  (재개 실행으로 건너뛴 연도의 이상치는 이 카운트에 안 잡힘 - 각 parquet의 컬럼을 직접 집계할 것)")
 
 
 print(f"\nmeasure_time_source 분포 확인은 별도 검증 스크립트에서 수행")
