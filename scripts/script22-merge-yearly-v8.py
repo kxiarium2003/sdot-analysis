@@ -299,10 +299,11 @@ for year in years:
 # 병합 불변식 검증
 # ==========================================
 total_target_files = len(df_inv[df_inv['schema_version'].isin(TARGET_SCHEMAS)])
+total_accepted = len(accepted) + resumed_file_count
 print(f"\n{'='*60}")
-print(f"병합 불변식 검증: accept({len(accepted)}) + reject({len(rejected)}) == 전체({total_target_files})?")
-assert len(accepted) + len(rejected) == total_target_files, \
-    f"❌ 불일치! accept={len(accepted)} reject={len(rejected)} total={total_target_files}"
+print(f"병합 불변식 검증: accept({len(accepted)}+{resumed_file_count}건 이전 실행분) + reject({len(rejected)}) == 전체({total_target_files})?")
+assert total_accepted + len(rejected) == total_target_files, \
+    f"❌ 불일치! accept={total_accepted} reject={len(rejected)} total={total_target_files}"
 print("✅ 통과")
 
 if rejected:
@@ -316,8 +317,8 @@ if rejected:
 # "남은 행의 measure_time이 실제로 datetime으로 파싱되는가"를 별도로 확인한다.
 # ==========================================
 raw_total = int(df_inv[df_inv['schema_version'].isin(TARGET_SCHEMAS)]['row_count'].sum())
-kept_total = sum(n for _, n, _ in accepted)
-dropped_total = sum(d for _, _, d in accepted)
+kept_total = sum(n for _, n, _ in accepted) + resumed_row_count
+dropped_total = sum(d for _, _, d in accepted)  # 이전 실행분(재개된 연도)의 폐기 건수는 마커에 없어 미포함
 
 print(f"\n{'='*60}")
 print(f"원본 행수(인벤토리 기준): {raw_total:,}")
