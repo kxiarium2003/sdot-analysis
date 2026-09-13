@@ -65,12 +65,14 @@ notebooks/.tmp/
 ```
 data/
 ├── raw/                          # 원본, 절대 수정하지 않음
-│   ├── S-DoT_2020/  ~  S-DoT_2026/     # 연도별 폴더 (파일명 규칙은 연도마다 다름 - 아래 참고)
+│   ├── S-DoT/
+│   │   └── S-DoT_2020/  ~  S-DoT_2026/     # 연도별 폴더 (파일명 규칙은 연도마다 다름 - 아래 참고)
 │   ├── KMA_ASOS_108/asos_108_{YYYYMM}.txt              # 77개 (202004~202608)
 │   ├── KMA_AWS_seoul/aws_seoul_{YYYYMM}_raw.txt        # 77개 (202004~202608)
+│   ├── DEM/seoul_srtm30m.tif                            # 서울 30m 해상도 DEM
+│   ├── seoul_living_polulatioon/                        # 서울 생활인구 (수집 진행 중, 2026-09-13~)
 │   └── 서울시 무더위쉼터.csv
 ├── interim/                      # 연도별/월별 중간 산출물
-│   ├── sdot_{2020~2026}.parquet          # 구버전(v8 이전) 연도별 병합 - 참고용, 더 안 씀
 │   ├── v8/
 │   │   ├── sdot_{2020~2026}_v8.done      # 완료 마커 (파일 수, 행 수 기록)
 │   │   └── sdot_{2020~2026}_v8.parquet   # 현재 정식 연도별 interim (script22 산출물)
@@ -79,19 +81,16 @@ data/
 │   └── kma_aws_seoul/
 │       └── {YYYYMM}.done / {YYYYMM}.parquet   # 월별 캐시, 202004~202608 (77개월 x 2파일)
 └── processed/
-    ├── master-v1/                # 구버전 마스터 (더 안 씀, 참고용)
-    │   ├── sdot_master_2020_2026.parquet
-    │   ├── sdot_master_2020_2026_cleaned.parquet
-    │   └── sdot_master_2020_2026_geocoded.parquet
-    ├── master-v2/
-    │   └── sdot_master_2020_2026_v2.parquet   # ⭐ 현재 마스터 데이터셋
-    ├── processed_merged_df.csv
-    ├── processed_sensor_coords.csv
-    ├── sensor_missing_rates_matrix.csv
-    └── sensor_pairs_500m.csv
+    └── master-v2/
+        └── sdot_master_2020_2026_v2.parquet   # ⭐ 현재 마스터 데이터셋
 ```
 
-**`data/raw/S-DoT_{연도}/` 파일명 규칙** (연도마다 원본 제공 방식이 바뀌어서 다름):
+> 2026-09-13: `S-DoT_{연도}/` 폴더들을 `S-DoT/` 밑으로 한 단계 옮겼습니다(연도 폴더가 계속
+> 늘어나서 정리). `metadata/sdot-schema-mapping.xlsx`의 FileInventory `relative_path`도 이때
+> 같이 갱신함. 구버전 산출물(`data/interim/sdot_{2020~2026}.parquet`, `data/processed/master-v1/`,
+> `processed_merged_df.csv` 등 구프로토타입 산출물)은 이때 함께 삭제됨.
+
+**`data/raw/S-DoT/S-DoT_{연도}/` 파일명 규칙** (연도마다 원본 제공 방식이 바뀌어서 다름):
 | 연도 | 규칙 | 개수 |
 |---|---|---|
 | 2020 | `S-DoT_NATURE_{YYYY.MM.DD-MM.DD}.csv` (초반엔 월단위, 11월부터 주단위) | 16개 |
@@ -101,7 +100,7 @@ data/
 | 2025 | 1~6월은 `S-DoT_NATURE_2025.{MM}/` 폴더 안에 일단위 파일, 7월 말부터 주단위 csv로 전환 | 폴더 6개(내부에 일별 파일 총 181개) + 주단위 29개 |
 | 2026 | 주단위 csv | 34개 |
 
-> `data/raw/S-DoT_2025/S-DoT_NATURE_2025.08.18-08.24.csv`는 스키마 인벤토리상 시작일이 `2023-11-22`로 잘못 나오는데, 이건 그 파일 안의 결측치 이상 행 1건 (`measure_time_year_outlier`) 때문이지 실제로 2023년 데이터가 섞인 게 아님
+> `data/raw/S-DoT/S-DoT_2025/S-DoT_NATURE_2025.08.18-08.24.csv`는 스키마 인벤토리상 시작일이 `2023-11-22`로 잘못 나오는데, 이건 그 파일 안의 결측치 이상 행 1건 (`measure_time_year_outlier`) 때문이지 실제로 2023년 데이터가 섞인 게 아님
 (`docs/data-source-notes.md` 2026-09-07 항목 참고).
 
 ---
