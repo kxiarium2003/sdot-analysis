@@ -5,7 +5,7 @@ script30-collect-seoul-living-population.py - 서울 생활인구(집계구 단�
 2024-09 ~ 2026-07(23개월) 대상. datafile.seoul.go.kr 자동 다운로드가 너무
 불안정(패킷 손실 심함)해서, 일부 달은 사용자가 웹사이트에서 직접 받아 아래
 경로에 넣어두는 방식도 병행함:
-  data/raw/seoul_living_population_census_block/{dataset}/{ZIP_PREFIX}_{YYYYMM}.zip
+  data/raw/D5_living_pop/{dataset}/{ZIP_PREFIX}_{YYYYMM}.zip
   (예: LOCAL_PEOPLE_202501.zip, LONG_FOREIGNER_202501.zip, TEMP_FOREIGNER_202501.zip)
 
 각 (데이터셋, 월)에 대해 (30초 간격 폴링 루프 안에서):
@@ -17,8 +17,8 @@ script30-collect-seoul-living-population.py - 서울 생활인구(집계구 단�
    ~130MB 텍스트라 한 달치를 한 번에 DataFrame으로 합치면 메모리 위험 -
    하루 단위로 즉시 parquet에 스트리밍 저장) 월별 parquet 생성
    -> data/interim/seoul_living_population/{dataset}/{YYYYMM}.parquet
-2. rclone copy로 원본 zip을 Google Drive(googledrive:sdot-analysis/raw/
-   seoul_living_population/raw_zips/{dataset}/)에 업로드
+2. rclone copy로 원본 zip을 Google Drive(googledrive:sdot-analysis/data1/
+   D5_living_pop/{dataset}/)에 업로드
 3. 업로드 성공을 로컬-원격 파일 크기 대조로 검증한 뒤에만 로컬 zip 삭제
    (rclone copy가 exit 0을 반환해도 무조건 믿지 않고 재확인 - 네트워크
    중간 실패나 부분 업로드를 놓치지 않기 위함)
@@ -42,6 +42,7 @@ script30-collect-seoul-living-population.py - 서울 생활인구(집계구 단�
 디스크 전략: zip은 처리(변환+업로드+검증) 즉시 삭제된다(직접 다운로드했든
 사용자가 넣어줬든 동일).
 """
+import sys
 import time
 import zipfile
 from pathlib import Path
@@ -52,13 +53,17 @@ import pyarrow.parquet as pq
 import requests
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-RAW_DIR = PROJECT_ROOT / 'data' / 'raw' / 'seoul_living_population_census_block'
+RAW_DIR = PROJECT_ROOT / 'data' / 'raw' / 'D5_living_pop'
 INTERIM_DIR = PROJECT_ROOT / 'data' / 'interim' / 'seoul_living_population'
-RCLONE_REMOTE = 'googledrive:sdot-analysis/raw/seoul_living_population/raw_zips'
+RCLONE_REMOTE = 'googledrive:sdot-analysis/data1/D5_living_pop'
 RCLONE_INTERIM_REMOTE = 'googledrive:sdot-analysis/interim/seoul_living_population'
 
+# 기본 대상(최초 수집 범위). CLI 인자로 덮어쓸 수 있다:
+#   --start YYYYMM --end YYYYMM --datasets long_term_foreigner,short_term_foreigner
+# 인자를 주지 않으면 아래 기본값 그대로 동작한다(기존 동작 유지).
 START_YM = (2024, 9)
 END_YM = (2026, 7)
+TARGET_DATASETS = None  # None이면 DATASETS 전체
 POLL_INTERVAL_SEC = 30
 
 ID_COLS = ['기준일ID', '행정동코드', '집계구코드']
@@ -190,7 +195,9 @@ def upload_and_verify(local_path: Path, remote_dir: str) -> bool:
 def all_targets():
     """(dataset_name, ym, raw_dir, interim_dir, remote_dir, interim_remote_dir, zip_prefix, inf_id, seq) 전체 목록."""
     targets = []
-    for dataset_name, cfg in DATASETS.items():
+    selected = TARGET_DATASETS or list(DATASETS)
+    for dataset_name in selected:
+        cfg = DATASETS[dataset_name]
         raw_dir = RAW_DIR / dataset_name
         interim_dir = INTERIM_DIR / dataset_name
         raw_dir.mkdir(parents=True, exist_ok=True)
@@ -275,12 +282,34 @@ def is_resolved(interim_dir: Path, ym: str) -> bool:
     return interim_dir.joinpath(f"{ym}.done").exists() or interim_dir.joinpath(f"{ym}.giveup").exists()
 
 
+def parse_args():
+    """--start/--end/--datasets 로 대상 범위를 좁힐 수 있게 한다(미지정 시 기본값 유지)."""
+    global START_YM, END_YM, TARGET_DATASETS
+    argv = sys.argv[1:]
+    for i, a in enumerate(argv):
+        if a == '--start':
+            START_YM = (int(argv[i + 1][:4]), int(argv[i + 1][4:6]))
+        elif a == '--end':
+            END_YM = (int(argv[i + 1][:4]), int(argv[i + 1][4:6]))
+        elif a == '--datasets':
+            names = [s.strip() for s in argv[i + 1].split(',') if s.strip()]
+            unknown = [n for n in names if n not in DATASETS]
+            if unknown:
+                raise SystemExit(f"알 수 없는 데이터셋: {unknown} (가능: {list(DATASETS)})")
+            TARGET_DATASETS = names
+
+
 def main():
+    parse_args()
+    selected = TARGET_DATASETS or list(DATASETS)
     targets = all_targets()
-    print(f"하이브리드 모드 시작 - 대상 {len(targets)}건 (데이터셋 3종 x 월 {len(targets)//3}개)")
+    n_months = len(targets) // len(selected) if selected else 0
+    print(f"하이브리드 모드 시작 - 대상 {len(targets)}건 "
+          f"(데이터셋 {len(selected)}종 x 월 {n_months}개, "
+          f"{START_YM[0]:04d}-{START_YM[1]:02d}~{END_YM[0]:04d}-{END_YM[1]:02d})")
     print(f"로컬에 zip이 있으면 그걸 쓰고, 없으면 자동 다운로드합니다. {POLL_INTERVAL_SEC}초 간격 폴링:")
-    for dataset_name in DATASETS:
-        print(f"  data/raw/seoul_living_population_census_block/{dataset_name}/")
+    for dataset_name in selected:
+        print(f"  data/raw/D5_living_pop/{dataset_name}/")
 
     while True:
         pending = [t for t in targets if not is_resolved(t[3], t[1])]
