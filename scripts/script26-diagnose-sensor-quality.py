@@ -97,13 +97,33 @@ continued = same_val & same_sensor & (gap_hours <= STUCK_GAP_HOURS)
 run_id = (~continued).cumsum()
 runs = vdf.groupby(run_id).agg(
     sensor_id=('sensor_id', 'first'),
+    stuck_value=('temp_avg', 'first'),
     run_start=('measure_time', 'min'),
     run_end=('measure_time', 'max'),
+    n_rows=('temp_avg', 'size'),
 ).reset_index(drop=True)
 runs['duration_hours'] = (runs['run_end'] - runs['run_start']).dt.total_seconds() / 3600
 stuck = runs.groupby('sensor_id')['duration_hours'].max().rename('max_stuck_run_hours')
 stuck_runs_over_threshold = runs[runs['duration_hours'] >= STUCK_THRESHOLD_HOURS]
 print(f"  - 72시간 이상 고착 구간 수: {len(stuck_runs_over_threshold):,}건, 해당 센서 수: {stuck_runs_over_threshold['sensor_id'].nunique():,}\n")
+
+print("[STEP 5b] 고착값별 집계 (어떤 값에서 고착이 발생했는지, data-source-notes.md 2026-09-07 항목 재현용)")
+by_value = stuck_runs_over_threshold.groupby('stuck_value').agg(
+    n_runs=('stuck_value', 'size'), n_sensors=('sensor_id', 'nunique'), n_rows=('n_rows', 'sum'),
+).reset_index().sort_values('n_runs', ascending=False)
+by_value_file = docs_dir / 'sdot-stuck-value-breakdown.csv'
+by_value.to_csv(by_value_file, index=False)
+n_total_valid = len(vdf)
+is_m40 = vdf['temp_avg'] == -40.0
+n_m40_total = int(is_m40.sum())
+n_m40_sensors_any = vdf.loc[is_m40, 'sensor_id'].nunique()
+top = by_value.iloc[0] if len(by_value) else None
+print(f"  - 72h+ 고착 구간 {len(stuck_runs_over_threshold):,}건 중 최빈 고착값: "
+      f"{top['stuck_value'] if top is not None else 'N/A'} ({int(top['n_runs']) if top is not None else 0}건, "
+      f"{(top['n_runs']/len(stuck_runs_over_threshold)*100):.0f}%, 72h+ 고착 센서 {int(top['n_sensors']) if top is not None else 0}개)")
+print(f"  - 전체 유효 temp_avg {n_total_valid:,}건 중 -40.0 값 등장 {n_m40_total:,}회 ({n_m40_total/n_total_valid*100:.2f}%), "
+      f"-40.0이 한 번이라도 찍힌 센서(72h+ 고착 여부 무관) {n_m40_sensors_any:,}개")
+print(f"  - 고착값별 집계 저장 → {by_value_file}")
 del vdf, runs
 gc.collect()
 
