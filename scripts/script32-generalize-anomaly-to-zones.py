@@ -31,8 +31,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ANOMALY_FILE = PROJECT_ROOT / 'data' / 'interim' / 'sdot_anomaly_field_202409_202608.parquet'
 ZONES_FILE = PROJECT_ROOT / 'data' / 'interim' / 'seoul_census_oa_wgs84.geojson'
 LANDCOVER_FILE = PROJECT_ROOT / 'data' / 'interim' / 'seoul_landcover_l2_wgs84.geojson'
-DEM_TIF = PROJECT_ROOT / 'data' / 'raw' / 'DEM' / 'seoul_srtm30m.tif'
-POP_DIR = PROJECT_ROOT / 'data' / 'raw' / 'seoul_census_oa_population'
+DEM_TIF = PROJECT_ROOT / 'data' / 'raw' / 'D4_DEM' / 'seoul_srtm30m.tif'
+POP_DIR = PROJECT_ROOT / 'data' / 'raw' / 'D6_SGIS_stats'
 MASTER_V2 = PROJECT_ROOT / 'data' / 'processed' / 'master-v2' / 'sdot_master_2020_2026_v2.parquet'
 OUTPUT_FILE = PROJECT_ROOT / 'data' / 'interim' / 'zone_night_anomaly_model_dataset.parquet'
 

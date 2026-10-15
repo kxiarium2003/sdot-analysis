@@ -44,7 +44,7 @@ BASE_URL = 'https://apihub.kma.go.kr/api/typ01/url/kma_sfctm3.php'
 START_YM = (2020, 4)
 END_YM = (2026, 8)
 
-raw_dir = PROJECT_ROOT / 'data' / 'raw' / 'KMA_ASOS_108'
+raw_dir = PROJECT_ROOT / 'data' / 'raw' / 'D3_KMA_ASOS_108'
 interim_dir = PROJECT_ROOT / 'data' / 'interim'
 raw_dir.mkdir(parents=True, exist_ok=True)
 interim_dir.mkdir(parents=True, exist_ok=True)

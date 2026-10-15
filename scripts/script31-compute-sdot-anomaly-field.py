@@ -30,7 +30,7 @@ from pykrige.uk import UniversalKriging
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 AWS_PARQUET = PROJECT_ROOT / 'data' / 'interim' / 'kma_aws_seoul.parquet'
 STATIONS_CSV = PROJECT_ROOT / 'metadata' / 'kma_aws_stations_seoul.csv'
-DEM_TIF = PROJECT_ROOT / 'data' / 'raw' / 'DEM' / 'seoul_srtm30m.tif'
+DEM_TIF = PROJECT_ROOT / 'data' / 'raw' / 'D4_DEM' / 'seoul_srtm30m.tif'
 MASTER_V2 = PROJECT_ROOT / 'data' / 'processed' / 'master-v2' / 'sdot_master_2020_2026_v2.parquet'
 QUALITY_CSV = PROJECT_ROOT / 'docs' / 'sdot-sensor-quality-report.csv'
 OUTPUT_FILE = PROJECT_ROOT / 'data' / 'interim' / 'sdot_anomaly_field_202409_202608.parquet'

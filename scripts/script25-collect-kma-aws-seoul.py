@@ -53,7 +53,7 @@ RETRIES = 3
 START_YM = (2020, 4)
 END_YM = (2026, 8)
 
-raw_dir = PROJECT_ROOT / 'data' / 'raw' / 'KMA_AWS_seoul'
+raw_dir = PROJECT_ROOT / 'data' / 'raw' / 'D2_KMA_AWS'
 interim_dir = PROJECT_ROOT / 'data' / 'interim' / 'kma_aws_seoul'
 metadata_dir = PROJECT_ROOT / 'metadata'
 raw_dir.mkdir(parents=True, exist_ok=True)

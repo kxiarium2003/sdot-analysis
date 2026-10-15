@@ -19,7 +19,7 @@ D5 전체 완료를 확인한 뒤 사용자 지시에 따라 진행합니다.
 - D5(생활인구)의 `집계구코드`는 13자리이고 D9(SGIS 2025 Q2, `TOT_OA_CD`)의 14자리와
   코드 체계 자체가 다르다(행정동코드 기준 비교 시 7.5%만 겹침 - 단순 자릿수 문제가
   아니라 행정동 통폐합으로 인한 코드 개편 때문으로 추정). 사용자가 D5와 정확히
-  일치하는 2016년 집계구 경계(`data/raw/seoul_census_oa_boundary_2016/집계구.shp`,
+  일치하는 2016년 집계구 경계(`data/raw/D9_zone_boundary/seoul_census_oa_boundary_2016/집계구.shp`,
   `TOT_REG_CD` 13자리, D5와 100% 일치 확인됨)를 구해서, 2016년 폴리곤 중심점이
   2025년 어느 D9 폴리곤 안에 들어가는지로 공간 매핑 크로스워크를 만들었다
   (`data/interim/oa_code_crosswalk_2016_to_2025.csv`, 19,152/19,153=99.99% 매칭,
@@ -48,11 +48,11 @@ from scipy.stats import spearmanr
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ZONES_FILE = PROJECT_ROOT / 'data' / 'interim' / 'seoul_census_oa_wgs84.geojson'
 LANDCOVER_FILE = PROJECT_ROOT / 'data' / 'interim' / 'seoul_landcover_l2_wgs84.geojson'
-DEM_TIF = PROJECT_ROOT / 'data' / 'raw' / 'DEM' / 'seoul_srtm30m.tif'
+DEM_TIF = PROJECT_ROOT / 'data' / 'raw' / 'D4_DEM' / 'seoul_srtm30m.tif'
 MODEL_DATASET = PROJECT_ROOT / 'data' / 'interim' / 'zone_night_anomaly_model_dataset.parquet'
 CROSSWALK_FILE = PROJECT_ROOT / 'data' / 'interim' / 'oa_code_crosswalk_2016_to_2025.csv'
 D5_DIR = PROJECT_ROOT / 'data' / 'interim' / 'seoul_living_population' / 'native'
-POP_DIR = PROJECT_ROOT / 'data' / 'raw' / 'seoul_census_oa_population'
+POP_DIR = PROJECT_ROOT / 'data' / 'raw' / 'D6_SGIS_stats'
 GAP_OUTPUT_FILE = PROJECT_ROOT / 'data' / 'interim' / 'phase3_gap_by_zone.parquet'
 
 RANDOM_STATE = 42

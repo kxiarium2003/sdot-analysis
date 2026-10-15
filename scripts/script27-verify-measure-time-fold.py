@@ -68,7 +68,7 @@ unparseable = 0
 per_year = {}
 
 for i, row in enumerate(v23.itertuples(), 1):
-    path = raw_dir / row.relative_path
+    path = raw_dir / row.relative_path.replace('S-DoT/', 'D1_S-DoT/', 1)  # xlsx의 relative_path는 옛 폴더명 기준
     try:
         df = pd.read_csv(path, encoding=row.encoding, dtype=str, index_col=False, on_bad_lines='skip', low_memory=False)
     except UnicodeDecodeError:

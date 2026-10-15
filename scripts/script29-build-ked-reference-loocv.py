@@ -30,7 +30,7 @@ from pykrige.uk import UniversalKriging
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 AWS_PARQUET = PROJECT_ROOT / 'data' / 'interim' / 'kma_aws_seoul.parquet'
 STATIONS_CSV = PROJECT_ROOT / 'metadata' / 'kma_aws_stations_seoul.csv'
-DEM_TIF = PROJECT_ROOT / 'data' / 'raw' / 'DEM' / 'seoul_srtm30m.tif'
+DEM_TIF = PROJECT_ROOT / 'data' / 'raw' / 'D4_DEM' / 'seoul_srtm30m.tif'
 OUTPUT_FILE = PROJECT_ROOT / 'data' / 'interim' / 'ked_loocv_residuals.parquet'
 
 ANALYSIS_START = '2024-09-01 00:00:00'
