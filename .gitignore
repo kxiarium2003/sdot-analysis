@@ -12,6 +12,19 @@
 data/
 *.csv
 *.xlsx
+*.parquet
+*.pkl
+*.geojson
+*.shp
+*.shx
+*.dbf
+*.prj
+*.cpg
+merged_data/
+data2/
+
+# 분석 산출물 (코드로 다시 만들 수 있음)
+rq1_followup/out/
 
 # Python
 __pycache__/
