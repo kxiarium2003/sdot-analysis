@@ -11,6 +11,7 @@
 # Data Files (원본, 중간, 마스터 데이터 모두 제외)
 data/
 *.csv
+*.csv.gz
 *.xlsx
 *.parquet
 *.pkl
